@@ -14,7 +14,9 @@ struct RootView: View {
                 .navigationDestination(for: Int.self) { id in
                     GameView(levelID: id, progress: progress, account: account,
                              onExit: { path = [] },
-                             onNext: id < Levels.count ? { path = [id + 1] } : nil)
+                             // push the next level (append, not replace — a same-length path
+                             // swap is dropped by NavigationStack, which broke "Next level")
+                             onNext: id < Levels.count ? { path.append(id + 1) } : nil)
                 }
         }
         .tint(Theme.onInk)
