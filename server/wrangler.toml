@@ -1,0 +1,20 @@
+name = "trace-api"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Trace competitive backend: per-level best-time + fewest-backtracks leaderboards on D1.
+# Create the DB once with:  wrangler d1 create trace-arena   (then paste database_id below)
+# Apply the schema with:     wrangler d1 execute trace-arena --remote --file=schema.sql
+# Set secrets:               wrangler secret put SESSION_SECRET ; wrangler secret put APPLE_SUB_PEPPER
+[[d1_databases]]
+binding = "DB"
+database_name = "trace-arena"
+database_id = "c4db9c9b-5f42-4f29-8b6d-a44fc3590483"
+
+# Production endpoint the iOS app talks to (custom domain in the manticthink.com zone,
+# auto-provisioned on deploy like rung/db8/logos).
+[[routes]]
+pattern = "trace-api.manticthink.com"
+custom_domain = true

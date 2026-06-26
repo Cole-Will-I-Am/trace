@@ -1,0 +1,183 @@
+name: iOS — TestFlight Release
+
+# Builds and uploads Trace to TestFlight from a hosted macOS runner. No local Mac required:
+# signing and upload both use an App Store Connect API key, so Xcode creates a cloud-managed
+# distribution certificate automatically.
+#
+# Pure-Swift app: the Xcode project is generated in-CI from project.yml by XcodeGen (the
+# .xcodeproj is NOT committed — only project.yml is).
+#
+# Trigger manually from the GitHub "Actions" tab (Run workflow).
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   ASC_KEY_ID         App Store Connect API key ID
+#   ASC_ISSUER_ID      App Store Connect API issuer ID
+#   ASC_KEY_P8_BASE64  The .p8 key file, base64-encoded
+# The Apple Team ID is baked in below; override with an APPLE_TEAM_ID secret.
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload to TestFlight after building"
+        type: boolean
+        default: true
+      skip_tests:
+        description: "Skip the unit-test job (escape hatch)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    timeout-minutes: 30
+    if: ${{ !inputs.skip_tests }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project (XcodeGen)
+        run: xcodegen generate
+
+      - name: Run unit tests (iOS Simulator)
+        run: |
+          set -euo pipefail
+          DEVICE=$(xcrun simctl list devices available | grep -oE 'iPhone [^(]+' | head -n1 | xargs)
+          if [ -z "$DEVICE" ]; then echo "::error::No iPhone simulator available"; exit 1; fi
+          echo "Using simulator: $DEVICE"
+          xcodebuild test \
+            -project Trace.xcodeproj \
+            -scheme Trace \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            CODE_SIGNING_ALLOWED=NO
+
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 60
+    needs: test
+    if: ${{ !cancelled() && (needs.test.result == 'success' || needs.test.result == 'skipped') }}
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || 'B3DB33R8JN' }}
+      ARCHIVE_PATH: ${{ github.workspace }}/build/Trace.xcarchive
+      EXPORT_PATH: ${{ github.workspace }}/build/export
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Sanity-check required secrets
+        run: |
+          set -euo pipefail
+          missing=0
+          for v in ASC_KEY_ID ASC_ISSUER_ID APPLE_TEAM_ID; do
+            if [ -z "${!v:-}" ]; then echo "::error::Missing secret $v"; missing=1; fi
+          done
+          if [ -z "${{ secrets.ASC_KEY_P8_BASE64 }}" ]; then
+            echo "::error::Missing secret ASC_KEY_P8_BASE64"; missing=1
+          fi
+          [ "$missing" -eq 0 ] || exit 1
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project (XcodeGen)
+        run: xcodegen generate
+
+      - name: Install App Store Connect API key
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          echo "$ASC_KEY_P8_BASE64" | base64 --decode \
+            > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+
+      - name: Archive
+        run: |
+          set -euo pipefail
+          xcodebuild archive \
+            -project Trace.xcodeproj \
+            -scheme Trace \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$ARCHIVE_PATH" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$GITHUB_RUN_NUMBER"
+
+      - name: Export signed IPA
+        run: |
+          set -euo pipefail
+          {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'
+            echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">'
+            echo '<plist version="1.0">'
+            echo '<dict>'
+            echo '  <key>method</key><string>app-store</string>'
+            echo '  <key>destination</key><string>export</string>'
+            echo '  <key>signingStyle</key><string>automatic</string>'
+            echo "  <key>teamID</key><string>${APPLE_TEAM_ID}</string>"
+            echo '  <key>uploadSymbols</key><true/>'
+            echo '  <key>manageAppVersionAndBuildNumber</key><false/>'
+            echo '</dict>'
+            echo '</plist>'
+          } > "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Upload .ipa as build artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: Trace-ipa
+          path: ${{ env.EXPORT_PATH }}/*.ipa
+          if-no-files-found: error
+
+      - name: Upload to TestFlight
+        if: ${{ inputs.upload }}
+        run: |
+          set -uo pipefail
+          IPA=$(ls "$EXPORT_PATH"/*.ipa | head -n1)
+          echo "Uploading $IPA to App Store Connect…"
+          set +e
+          OUT=$(xcrun altool --upload-app -f "$IPA" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1)
+          RC=$?
+          set -e
+          echo "$OUT"
+          # altool sometimes exits 0 even on validation failure, so also scan output.
+          if [ "$RC" -ne 0 ] || echo "$OUT" | grep -qiE "UPLOAD FAILED|Validation failed|Failed to upload package|ERROR ITMS"; then
+            echo "::error::altool upload/validation failed"
+            exit 1
+          fi
+          echo "Upload succeeded. The build will appear in TestFlight after processing."
