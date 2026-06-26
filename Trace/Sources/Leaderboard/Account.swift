@@ -41,6 +41,12 @@ final class Account: NSObject, ObservableObject {
         catch { lastError = describe(error); return nil }
     }
 
+    /// Re-fetch the player from the server (picks up a username set on another device).
+    func refresh() async {
+        guard let token else { return }
+        do { player = try await backend.me(token: token) } catch { /* keep the cached player */ }
+    }
+
     func board(level: Int, metric: String) async -> BoardResponse? {
         do { return try await backend.board(level: level, metric: metric, token: token) }
         catch { lastError = describe(error); return nil }

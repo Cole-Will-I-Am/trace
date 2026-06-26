@@ -48,17 +48,18 @@ the App Store Connect API key, and uploads. Repo secrets: `ASC_KEY_ID`, `ASC_ISS
 ## Backend
 
 `server/` is a Cloudflare Worker on D1 (`trace-arena`), serving `trace-api.manticthink.com`.
-The client submits a level's time, backtrack count, and final trail; the server validates the
-trail's structure (in-bounds, contiguous, start→goal, length ≥ the Manhattan distance),
-enforces a plausible per-cell time floor, hashes the trail for audit, and keeps the best.
-Anonymous by default; Sign in with Apple to claim a username across devices. The backtracks
-board trusts any accepted run; the time board shadow-ranks a run whose time is below the soft
-floor (`time_verified`).
+The client submits a level's time, backtrack count, and final trail; the server **replays the
+trail against the real maze** (`src/levels.js`, generated from the same Swift generator) — every
+step must cross an actual open corridor, never touch a spike, and run start→goal — then enforces
+a plausible per-cell time floor, hashes the trail for audit, and keeps the best. Anonymous by
+default; Sign in with Apple to claim a username across devices. The backtracks board trusts any
+maze-valid run; the time board shadow-ranks a run whose time is below the soft floor
+(`time_verified`).
 
-**Follow-up — full maze replay:** the strongest anti-cheat is to reject any trail step that
-crosses a wall or touches a spike. The maze is deterministic, so `DUMP_LEVELS=1 swift test`
-can emit `server/src/levels.js` (passages + spikes per level) for the Worker to replay
-against; wiring that in is a drop-in upgrade.
+Regenerate the maze data after any level change:
+```bash
+swiftc Trace/Sources/Engine/*.swift server/tools/dump_main.swift -o /tmp/td && /tmp/td   # writes server/src/levels.js
+```
 
 ```bash
 cd server

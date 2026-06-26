@@ -41,12 +41,21 @@ struct LeaderboardView: View {
                 }
 
                 accountSection
+
+                Section {
+                    Link("Privacy Policy", destination: URL(string: "https://trace-api.manticthink.com/privacy")!)
+                        .foregroundStyle(Theme.onInk)
+                    Link("Terms of Use", destination: URL(string: "https://trace-api.manticthink.com/terms")!)
+                        .foregroundStyle(Theme.onInk)
+                } header: { Text("About").foregroundStyle(Theme.onInkDim) }
+                .listRowBackground(Theme.inkRaised)
             }
             .scrollContentBackground(.hidden)
             .background(Theme.ink.ignoresSafeArea())
             .navigationTitle("Leaderboard")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
+            .task { await account.refresh() }
             .task(id: scopeKey) { await reload() }
         }
     }

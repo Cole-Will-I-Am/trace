@@ -97,7 +97,12 @@ final class GameViewModel: ObservableObject {
             guard let self else { return }
             if let resp = await self.account.submit(levelId: self.levelID, timeMs: ms, backtracks: bt, trail: trail) {
                 await MainActor.run {
-                    self.onlineRank = "#\(resp.rank) of \(resp.playerCount)"
+                    if resp.playerCount > 1 {
+                        let top = max(1, Int((100 - resp.percentile).rounded()))
+                        self.onlineRank = "#\(resp.rank) of \(resp.playerCount) · top \(top)%"
+                    } else {
+                        self.onlineRank = "#\(resp.rank) of \(resp.playerCount)"
+                    }
                 }
             }
         }
