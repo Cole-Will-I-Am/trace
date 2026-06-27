@@ -34,6 +34,9 @@ final class MazeScene: SKScene {
     private var trailMid = SKShapeNode()
     private var trailCore = SKShapeNode()
     private var head = SKNode()
+    private var headTarget = CGPoint.zero        // live finger position the trail flows toward
+    private var lastBuildHead = CGPoint(x: -1, y: -1)
+    private var lastBuildCount = -1
 
     private var gateNodes: [(node: SKShapeNode, gate: Gate)] = []
     private var moverNodes: [(node: SKNode, hz: MovingHazard)] = []
@@ -238,18 +241,52 @@ final class MazeScene: SKScene {
         h2.fillColor = UIColor(theme.accentHi); h2.strokeColor = .clear
         head.addChild(h1); head.addChild(h2)
         head.position = center(maze.start)
+        headTarget = center(maze.start)
         trailLayer.addChild(head)
-        refreshTrail()
+        rebuildTrail(force: true)
     }
 
-    private func refreshTrail() {
-        guard engine.trail.count >= 1 else { return }
-        let path = CGMutablePath()
-        let pts = engine.trail.map { center($0) }
-        path.move(to: pts[0])
-        for p in pts.dropFirst() { path.addLine(to: p) }
+    /// Rebuild the glowing trail: the recorded cell-centre path PLUS a live leading segment to
+    /// the finger, smoothed so corners flow instead of cornering at hard right angles. Cheap to
+    /// call per touch sample; skips when nothing moved.
+    private func rebuildTrail(force: Bool = false) {
+        guard !engine.trail.isEmpty else { return }
+        if !force, engine.trail.count == lastBuildCount,
+           hypot(headTarget.x - lastBuildHead.x, headTarget.y - lastBuildHead.y) < 0.6 { return }
+
+        var pts = engine.trail.map { center($0) }
+        // extend to the live finger so the line grows smoothly, not a cell at a time
+        if running, !awaitingRealign, let last = pts.last,
+           hypot(headTarget.x - last.x, headTarget.y - last.y) > 0.5 {
+            pts.append(headTarget)
+        }
+        let path = smoothedPath(pts)
         trailGlow.path = path; trailMid.path = path; trailCore.path = path
-        head.position = center(engine.current)
+        head.position = (running && !awaitingRealign) ? headTarget : center(engine.current)
+        lastBuildHead = headTarget; lastBuildCount = engine.trail.count
+    }
+
+    /// Round each interior corner of a polyline with a quadratic curve (control = the corner),
+    /// so the curve stays inside the corridor (it can never bulge through a wall). Collinear
+    /// runs stay straight.
+    private func smoothedPath(_ p: [CGPoint]) -> CGPath {
+        let path = CGMutablePath()
+        guard let first = p.first else { return path }
+        path.move(to: first)
+        if p.count <= 2 { if p.count == 2 { path.addLine(to: p[1]) }; return path }
+        let r = kUnit * 0.42
+        for i in 1..<(p.count - 1) {
+            let a = p[i - 1], c = p[i], b = p[i + 1]
+            let d1 = max(0.001, hypot(c.x - a.x, c.y - a.y))
+            let d2 = max(0.001, hypot(b.x - c.x, b.y - c.y))
+            let r1 = min(r, d1 * 0.5), r2 = min(r, d2 * 0.5)
+            let m1 = CGPoint(x: c.x + (a.x - c.x) * (r1 / d1), y: c.y + (a.y - c.y) * (r1 / d1))
+            let m2 = CGPoint(x: c.x + (b.x - c.x) * (r2 / d2), y: c.y + (b.y - c.y) * (r2 / d2))
+            path.addLine(to: m1)
+            path.addQuadCurve(to: m2, control: c)
+        }
+        path.addLine(to: p[p.count - 1])
+        return path
     }
 
     // MARK: touch → cell stepping
@@ -291,7 +328,8 @@ final class MazeScene: SKScene {
         running = false
         awaitingRealign = false
         engine.reset()
-        refreshTrail()
+        headTarget = center(maze.start)
+        rebuildTrail(force: true)
         for (node, _) in dimmable { node.alpha = 1 }
         applyFog()
     }
@@ -305,7 +343,8 @@ final class MazeScene: SKScene {
         running = false
         awaitingRealign = false
         engine.reset()
-        refreshTrail()
+        headTarget = center(maze.start)
+        rebuildTrail(force: true)
         applyFog()
         onLiftReset?()
         Haptics.backtrack()
@@ -333,16 +372,19 @@ final class MazeScene: SKScene {
                 switch engine.move(to: maze.neighbor(cur, dir), at: currentElapsed()) {
                 case .advanced(let c):
                     if maze.checkpoints.contains(c) { Haptics.checkpoint(); checkpointPulse(c) } else { Haptics.step() }
-                    refreshTrail(); notifyTrail(); moved = true
+                    notifyTrail(); moved = true                           // trail redrawn at end of step()
                 case .backtracked:
-                    Haptics.backtrack(); refreshTrail(); notifyTrail(); moved = true
+                    Haptics.backtrack(); notifyTrail(); moved = true
                 case .reset:
-                    Haptics.trap(); flashTrap(); refreshTrail(); notifyTrail()
-                    onTrapReset?(); awaitingRealign = true                 // stop until the finger comes back
-                    head.position = fingerClamp(f); return
+                    Haptics.trap(); flashTrap()
+                    awaitingRealign = true                                 // stop until the finger comes back
+                    headTarget = center(engine.current)                   // snap the head to the checkpoint
+                    rebuildTrail(force: true); notifyTrail(); onTrapReset?()
+                    return
                 case .reachedGoal:
                     let t = currentElapsed(); running = false; elapsed = t // capture BEFORE clearing running
-                    Haptics.goal(); refreshTrail(); winBurst()
+                    headTarget = center(engine.current)                   // = goal
+                    Haptics.goal(); rebuildTrail(force: true); winBurst()
                     onWin?(t, engine.backtrackCount, engine.resetCount); return
                 case .blockedByWall, .blockedByGate, .blockedOneWay:
                     blocked = true; continue                              // try the other axis before buzzing
@@ -353,7 +395,8 @@ final class MazeScene: SKScene {
             }
             if !moved { if blocked { buzzWall() }; break }
         }
-        head.position = fingerClamp(f)
+        headTarget = fingerClamp(f)
+        rebuildTrail()            // flow the leading edge to the finger every touch sample
     }
 
     private func notifyTrail() { onTrailChanged?(engine.backtrackCount, engine.resetCount) }
