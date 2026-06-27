@@ -224,14 +224,18 @@ final class MazeScene: SKScene {
     }
 
     private func buildTrailNodes() {
+        // Glow is faked by stacking three solid strokes (wide+faint → mid → bright core). We do
+        // NOT use SKShapeNode.glowWidth: on a thick, frequently-redrawn stroked path it produces
+        // triangular tessellation spikes ("shredding" along the line). Round joins soften corners.
         for (n, w, a, c): (SKShapeNode, CGFloat, CGFloat, Color) in [
-            (trailGlow, kUnit * 0.50, 0.30, theme.glow),
-            (trailMid,  kUnit * 0.30, 0.95, theme.accent),
-            (trailCore, kUnit * 0.12, 1.0,  theme.accentHi),
+            (trailGlow, kUnit * 0.64, 0.16, theme.glow),
+            (trailMid,  kUnit * 0.34, 0.80, theme.accent),
+            (trailCore, kUnit * 0.13, 1.0,  theme.accentHi),
         ] {
             n.strokeColor = UIColor(c).withAlphaComponent(a); n.lineWidth = w
             n.lineCap = .round; n.lineJoin = .round; n.fillColor = .clear
-            n.glowWidth = n === trailGlow ? kUnit * 0.18 : 0
+            n.glowWidth = 0
+            n.isAntialiased = true
             trailLayer.addChild(n)
         }
         // finger head
@@ -255,10 +259,18 @@ final class MazeScene: SKScene {
            hypot(headTarget.x - lastBuildHead.x, headTarget.y - lastBuildHead.y) < 0.6 { return }
 
         var pts = engine.trail.map { center($0) }
-        // extend to the live finger so the line grows smoothly, not a cell at a time
+        // extend to the live finger so the line grows smoothly, not a cell at a time — but only
+        // when the finger is genuinely AHEAD of the last cell, so it never doubles back (which a
+        // thick stroke renders as a barb).
         if running, !awaitingRealign, let last = pts.last,
            hypot(headTarget.x - last.x, headTarget.y - last.y) > 0.5 {
-            pts.append(headTarget)
+            if pts.count >= 2 {
+                let prev = pts[pts.count - 2]
+                let forward = (last.x - prev.x) * (headTarget.x - last.x) + (last.y - prev.y) * (headTarget.y - last.y)
+                if forward > 0 { pts.append(headTarget) }
+            } else {
+                pts.append(headTarget)
+            }
         }
         let path = smoothedPath(pts)
         trailGlow.path = path; trailMid.path = path; trailCore.path = path
@@ -266,26 +278,14 @@ final class MazeScene: SKScene {
         lastBuildHead = headTarget; lastBuildCount = engine.trail.count
     }
 
-    /// Round each interior corner of a polyline with a quadratic curve (control = the corner),
-    /// so the curve stays inside the corridor (it can never bulge through a wall). Collinear
-    /// runs stay straight.
+    /// A plain polyline through the trail points. Corners are softened by the strokes' round
+    /// lineJoin (radius ≈ width/2) — clean and artifact-free, vs. hand-rolled curves which left
+    /// near-degenerate segments at the moving leading edge.
     private func smoothedPath(_ p: [CGPoint]) -> CGPath {
         let path = CGMutablePath()
         guard let first = p.first else { return path }
         path.move(to: first)
-        if p.count <= 2 { if p.count == 2 { path.addLine(to: p[1]) }; return path }
-        let r = kUnit * 0.42
-        for i in 1..<(p.count - 1) {
-            let a = p[i - 1], c = p[i], b = p[i + 1]
-            let d1 = max(0.001, hypot(c.x - a.x, c.y - a.y))
-            let d2 = max(0.001, hypot(b.x - c.x, b.y - c.y))
-            let r1 = min(r, d1 * 0.5), r2 = min(r, d2 * 0.5)
-            let m1 = CGPoint(x: c.x + (a.x - c.x) * (r1 / d1), y: c.y + (a.y - c.y) * (r1 / d1))
-            let m2 = CGPoint(x: c.x + (b.x - c.x) * (r2 / d2), y: c.y + (b.y - c.y) * (r2 / d2))
-            path.addLine(to: m1)
-            path.addQuadCurve(to: m2, control: c)
-        }
-        path.addLine(to: p[p.count - 1])
+        for q in p.dropFirst() { path.addLine(to: q) }
         return path
     }
 
