@@ -24,6 +24,8 @@ targets:
     sources:
       - Trace/Sources
       - Trace/Assets.xcassets
+      - path: Trace/PrivacyInfo.xcprivacy
+        type: file
     # Sign in with Apple (optional account upgrade for the leaderboard).
     entitlements:
       path: Trace/Trace.entitlements
