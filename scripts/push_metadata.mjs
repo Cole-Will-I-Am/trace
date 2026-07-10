@@ -78,10 +78,17 @@ const vs = version.attributes?.versionString;
 const state = version.attributes?.appStoreState;
 console.log(`Patching version ${vs} (id=${vid}, state=${state})…`);
 
+// metadata lives on the localization, not the version directly
+const locs = await api(`/appStoreVersions/${vid}/appStoreVersionLocalizations`);
+const loc = locs.data?.[0];
+if (!loc) { console.log("No localizations found."); process.exit(1); }
+const lid = loc.id;
+console.log(`  localization: ${loc.attributes?.locale} (id=${lid})`);
+
 const patchBody = {
   data: {
-    type: "appStoreVersions",
-    id: vid,
+    type: "appStoreVersionLocalizations",
+    id: lid,
     attributes: {
       description: METADATA.description,
       keywords: METADATA.keywords,
@@ -90,11 +97,10 @@ const patchBody = {
   },
 };
 
-const patched = await api(`/appStoreVersions/${vid}`, { method: "PATCH", body: patchBody });
+const patched = await api(`/appStoreVersionLocalizations/${lid}`, { method: "PATCH", body: patchBody });
 const a = patched.data?.attributes || {};
-console.log(`✓ Updated version ${a.versionString}`);
+console.log(`✓ Updated ${a.locale} localization`);
 console.log(`  description: ${(a.description || "").length} chars`);
 console.log(`  keywords: ${a.keywords || "(empty)"}`);
 console.log(`  whatsNew: ${a.whatsNew || "(empty)"}`);
-console.log(`  state: ${a.appStoreState}`);
 console.log("\nDone. Open App Store Connect to add screenshots and submit.");
