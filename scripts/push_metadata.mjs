@@ -52,8 +52,8 @@ Twenty-one handcrafted mazes, each glowing with its own colour palette. Every le
 Three stars per level. Par time. Zero-backtrack runs. A per-level leaderboard for best time and fewest backtracks, plus a total completion-time board across the full campaign. Play anonymously from the moment you launch, or Sign in with Apple to carry your name across devices.
 
 No ads. No currencies. No timers that pressure you. Just your finger, a maze, and a trail of light.`,
-  keywords: "maze,puzzle,trace,labyrinth,finger,drag,trail,path,logic,runner,backtrack,one-touch,minimalist,challenge,brain,glow,dark,levels,speedrun,leaderboard",
-  whatsNew: "First App Store release — 21 maze levels with per-level and total leaderboards, progressive mechanics (gates, one-ways, moving hazards, phantoms, fog), and Sign in with Apple.",
+  keywords: "maze,puzzle,trace,labyrinth,drag,trail,backtrack,logic,runner,one-touch,glow,dark,levels,speedrun",
+  whatsNew: null,
 };
 
 // ── main ──────────────────────────────────────────────────────────────────
@@ -85,15 +85,17 @@ if (!loc) { console.log("No localizations found."); process.exit(1); }
 const lid = loc.id;
 console.log(`  localization: ${loc.attributes?.locale} (id=${lid})`);
 
+const attrs = {
+  description: METADATA.description,
+  keywords: METADATA.keywords,
+};
+if (METADATA.whatsNew) attrs.whatsNew = METADATA.whatsNew;
+
 const patchBody = {
   data: {
     type: "appStoreVersionLocalizations",
     id: lid,
-    attributes: {
-      description: METADATA.description,
-      keywords: METADATA.keywords,
-      whatsNew: METADATA.whatsNew,
-    },
+    attributes: attrs,
   },
 };
 
