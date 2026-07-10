@@ -1,0 +1,24 @@
+name: iOS — Push Metadata to App Store Connect
+
+# Pushes the app description, keywords, and release notes directly to
+# App Store Connect via the REST API. No manual copy-paste needed.
+# Run this after the TestFlight build processes and you're ready to submit.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Push metadata to App Store Connect
+        run: node scripts/push_metadata.mjs
