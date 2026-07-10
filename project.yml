@@ -51,6 +51,20 @@ targets:
     scheme:
       testTargets:
         - TraceTests
+        - ScreenshotTests
+
+  ScreenshotTests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - ScreenshotTests
+    dependencies:
+      - target: Trace
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.colecantcode.trace.screenshots
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: Trace
 
   TraceTests:
     type: bundle.unit-test

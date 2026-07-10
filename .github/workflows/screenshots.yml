@@ -1,0 +1,100 @@
+name: iOS — App Store Screenshots
+
+# Captures App Store screenshots on an iPhone 16 Pro Max simulator (6.7") and uploads
+# them as a build artifact. Run this before submitting to App Store Connect.
+#
+# The workflow:
+#   1. Generates the Xcode project (XcodeGen)
+#   2. Builds Trace + ScreenshotTests for the simulator
+#   3. Runs the screenshot UI tests — each test navigates to a screen and captures it
+#   4. Collects the PNGs as a downloadable artifact
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: screenshots
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      DEVICE: "iPhone 16 Pro Max"
+      SCREENSHOT_DIR: "${{ github.workspace }}/screenshots"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Select latest stable Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app for simulator
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project Trace.xcodeproj \
+            -scheme Trace \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -derivedDataPath "$RUNNER_TEMP/derived" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Run screenshot tests
+        run: |
+          set -euo pipefail
+          mkdir -p "$SCREENSHOT_DIR"
+          xcodebuild test-without-building \
+            -project Trace.xcodeproj \
+            -scheme Trace \
+            -destination "platform=iOS Simulator,name=$DEVICE" \
+            -derivedDataPath "$RUNNER_TEMP/derived" \
+            -only-testing:ScreenshotTests \
+            SCREENSHOT_DIR="$SCREENSHOT_DIR" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Verify screenshots
+        run: |
+          count=$(ls -1 "$SCREENSHOT_DIR"/*.png 2>/dev/null | wc -l)
+          echo "Captured $count screenshot(s)"
+          ls -lh "$SCREENSHOT_DIR"/*.png 2>/dev/null || echo "::warning::No screenshots captured"
+          if [ "$count" -eq 0 ]; then echo "::error::No screenshots found"; exit 1; fi
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v5
+        with:
+          name: Trace-AppStore-Screenshots-6.7inch
+          path: ${{ env.SCREENSHOT_DIR }}/*.png
+          if-no-files-found: error
+
+      - name: Upload frames for 6.5-inch
+        # Apple also wants 6.5" (iPhone 14 Pro Max) — downscale from 6.7" frames.
+        # 6.5" = 1284×2778 → scale 0.95; we include the raw 6.7" and let
+        # App Store Connect's media manager handle the resize, but provide both
+        # resolutions as a convenience.
+        run: |
+          mkdir -p "$SCREENSHOT_DIR-65"
+          for f in "$SCREENSHOT_DIR"/*.png; do
+            base=$(basename "$f")
+            sips -z 2778 1284 "$f" --out "$SCREENSHOT_DIR-65/$base" 2>/dev/null || \
+              cp "$f" "$SCREENSHOT_DIR-65/$base"
+          done
+          echo "6.5-inch variants prepared"
+
+      - name: Upload 6.5-inch screenshots
+        uses: actions/upload-artifact@v5
+        with:
+          name: Trace-AppStore-Screenshots-6.5inch
+          path: ${{ env.SCREENSHOT_DIR }}-65/*.png
+          if-no-files-found: error
