@@ -91,10 +91,17 @@ if (!version) {
 console.log(`Version: ${version.attributes?.versionString} (${version.id})`);
 
 // Check if review detail already exists for this version
+// The filter param is tricky — instead, query all app details and match by version
 let existingId = null;
 try {
-  const existingDetails = await api(`/appStoreReviewDetails?filter%5BappStoreVersion%5D=${version.id}`);
-  existingId = existingDetails.data?.[0]?.id;
+  const allDetails = await api(`/apps/${app.id}/appStoreReviewDetails`);
+  const match = allDetails.data?.find(d =>
+    d.relationships?.appStoreVersion?.data?.id === version.id
+  );
+  if (match) {
+    existingId = match.id;
+    console.log(`  Found existing review detail: ${existingId}`);
+  }
 } catch (e) {
   console.log("  (no existing review detail found, will create)");
 }
