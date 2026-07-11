@@ -1,0 +1,23 @@
+name: iOS — Push Review Notes to App Store Connect
+
+# Pushes the App Review Information (device testing, external services,
+# regional differences, account access, gameplay notes) to ASC.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Push review notes to App Store Connect
+        run: node scripts/push_review_notes.mjs
