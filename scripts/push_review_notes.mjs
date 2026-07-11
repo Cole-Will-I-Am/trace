@@ -76,8 +76,17 @@ if (!app) { console.log("No app found"); process.exit(1); }
 
 console.log("Looking up version...");
 const versions = await api(`/apps/${app.id}/appStoreVersions?limit=5`);
-const version = versions.data?.find(v => v.attributes?.appStoreState === "PREPARE_FOR_SUBMISSION" || v.attributes?.appStoreState === "READY_FOR_SALE");
-if (!version) { console.log("No editable version found"); process.exit(1); }
+const editableStates = [
+  "PREPARE_FOR_SUBMISSION", "READY_FOR_SALE", "PENDING_DEVELOPER_RELEASE",
+  "IN_REVIEW", "WAITING_FOR_REVIEW", "REJECTED", "DEVELOPER_REJECTED",
+  "DEVELOPER_REMOVED_FROM_SALE", "METADATA_REJECTED"
+];
+const version = versions.data?.find(v => editableStates.includes(v.attributes?.appStoreState));
+if (!version) {
+  console.log("No editable version found. Available states:");
+  versions.data?.forEach(v => console.log(`  ${v.attributes?.versionString}: ${v.attributes?.appStoreState}`));
+  process.exit(1);
+}
 
 console.log(`Version: ${version.attributes?.versionString} (${version.id})`);
 
