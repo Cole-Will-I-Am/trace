@@ -90,13 +90,14 @@ if (!version) {
 
 console.log(`Version: ${version.attributes?.versionString} (${version.id})`);
 
-// Check if review detail already exists
-const existing = await api(`/apps/${app.id}/reviewSubmissions?limit=1`).catch(() => ({ data: [] }));
+// Check if review detail already exists for this version
+const existingDetails = await api(`/appStoreReviewDetails?filter[appStoreVersion]=${version.id}`).catch(() => ({ data: [] }));
+const existingId = existingDetails.data?.[0]?.id;
 
-// Create or update the review detail for this version
 const body = {
   data: {
     type: "appStoreReviewDetails",
+    id: existingId || undefined,
     attributes: {
       contactFirstName: "Colton",
       contactLastName: "Williams",
@@ -105,32 +106,21 @@ const body = {
       demoAccountRequired: false,
       notes: REVIEW_NOTES,
     },
-    relationships: {
-      appStoreVersion: {
-        data: { type: "appStoreVersions", id: version.id },
-      },
-    },
   },
 };
 
-try {
-  console.log("Pushing review notes to App Store Connect...");
-  const result = await api("/appStoreReviewDetails", { method: "POST", body });
-  console.log("✓ Review notes pushed successfully");
-  console.log(`  Contact: ${result.data?.attributes?.contactFirstName} ${result.data?.attributes?.contactLastName}`);
-  console.log(`  Demo required: ${result.data?.attributes?.demoAccountRequired}`);
-  console.log(`  Notes: ${(result.data?.attributes?.notes || "").length} chars`);
-} catch (e) {
-  if (e.message.includes("409") && e.message.includes("ENTITY_ERROR")) {
-    console.log("Review detail already exists — using PATCH instead.");
-    // Try to find existing review detail
-    const detail = await api(`/appStoreReviewDetails?filter[appStoreVersion]=${version.id}`).catch(() => ({}));
-    console.log("Existing detail ID:", detail?.data?.[0]?.id || "not found, trying upsert");
-  } else {
-    console.log("Error:", e.message);
-    process.exit(1);
-  }
-}
+// Remove undefined id for POST (PATCH needs it, POST can't have it)
+if (!existingId) delete body.data.id;
+
+const method = existingId ? "PATCH" : "POST";
+const endpoint = existingId ? `/appStoreReviewDetails/${existingId}` : "/appStoreReviewDetails";
+
+console.log(existingId ? `Updating existing review detail (${existingId})...` : "Creating review detail...");
+const result = await api(endpoint, { method, body });
+console.log("✓ Review notes pushed successfully");
+console.log(`  Contact: ${result.data?.attributes?.contactFirstName} ${result.data?.attributes?.contactLastName}`);
+console.log(`  Demo required: ${result.data?.attributes?.demoAccountRequired}`);
+console.log(`  Notes: ${(result.data?.attributes?.notes || "").length} chars`);
 
 // Also check: is there a review submission?
 const subs = await api(`/reviewSubmissions?filter[app]=${app.id}&filter[platform]=IOS&limit=5`);
