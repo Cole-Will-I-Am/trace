@@ -91,8 +91,13 @@ if (!version) {
 console.log(`Version: ${version.attributes?.versionString} (${version.id})`);
 
 // Check if review detail already exists for this version
-const existingDetails = await api(`/appStoreReviewDetails?filter[appStoreVersion]=${version.id}`).catch(() => ({ data: [] }));
-const existingId = existingDetails.data?.[0]?.id;
+let existingId = null;
+try {
+  const existingDetails = await api(`/appStoreReviewDetails?filter%5BappStoreVersion%5D=${version.id}`);
+  existingId = existingDetails.data?.[0]?.id;
+} catch (e) {
+  console.log("  (no existing review detail found, will create)");
+}
 
 const body = {
   data: {
@@ -109,8 +114,13 @@ const body = {
   },
 };
 
-// Remove undefined id for POST (PATCH needs it, POST can't have it)
-if (!existingId) delete body.data.id;
+// For POST (new), add the required appStoreVersion relationship
+if (!existingId) {
+  delete body.data.id;
+  body.data.relationships = {
+    appStoreVersion: { data: { type: "appStoreVersions", id: version.id } },
+  };
+}
 
 const method = existingId ? "PATCH" : "POST";
 const endpoint = existingId ? `/appStoreReviewDetails/${existingId}` : "/appStoreReviewDetails";
