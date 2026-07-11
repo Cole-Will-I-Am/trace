@@ -53,5 +53,15 @@ for (const s of subs.data || []) {
   const a = s.attributes || {};
   const sd = a.submittedDate ? new Date(a.submittedDate) : null;
   const days = sd ? ((now - sd.getTime()) / 86_400_000).toFixed(1) : "-";
-  console.log(`  state=${a.state}  submitted=${a.submittedDate || "-"}  (${days} days ago)`);
+  console.log(`  state=${a.state}  submitted=${a.submittedDate || "-"}  (${days} ago)`);
+}
+
+const builds = await api(`/builds?filter[app]=${app.id}&limit=5&sort=-uploadedDate`);
+console.log("\n=== Recent Builds (TestFlight) ===");
+for (const b of builds.data || []) {
+  const a = b.attributes || {};
+  const up = a.uploadedDate ? new Date(a.uploadedDate) : null;
+  const ago = up ? `${((now - up.getTime()) / 60_000).toFixed(0)} min ago` : "-";
+  console.log(`  ${a.version || "?"} (${a.buildNumber || "?"})  processing=${a.processingState}  expired=${a.expired}  usesNonExemptEncryption=${a.usesNonExemptEncryption ?? "not set"}`);
+  if (a.processingState === "INVALID" && a.processingStateReason) console.log(`    ⚠ ${a.processingStateReason}`);
 }
