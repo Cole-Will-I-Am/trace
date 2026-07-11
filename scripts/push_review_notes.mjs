@@ -127,4 +127,4 @@ try {
 const subs = await api(`/reviewSubmissions?filter[app]=${app.id}&filter[platform]=IOS&limit=5`);
 const subCount = subs.data?.length || 0;
 console.log(`\nReview submissions: ${subCount} existing`);
-console.log("Done. Open App Store Connect to verify: https://appstoreconnect.apple.com/apps/${app.id}/appstore/review`);
+console.log(`Done. Open App Store Connect to verify: https://appstoreconnect.apple.com/apps/${app.id}/appstore/review`);
