@@ -108,4 +108,11 @@ final class Backend {
     func deleteAccount(token: String) async throws {
         let _: DeletedResp = try await send("/v1/account", method: "DELETE", token: token)
     }
+
+    func reportPlayer(token: String, targetId: String, reason: String) async throws {
+        struct B: Encodable { let targetId: String; let reason: String }
+        struct R: Decodable { let reported: Bool }
+        let _: R = try await send("/v1/report", method: "POST", token: token,
+                                  bodyData: enc(B(targetId: targetId, reason: reason)))
+    }
 }

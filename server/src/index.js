@@ -296,9 +296,29 @@ async function hDeleteAccount(req, env, player) {
     env.DB.prepare("DELETE FROM scores WHERE player_id = ?").bind(player.id),
     env.DB.prepare("DELETE FROM sessions WHERE player_id = ?").bind(player.id),
     env.DB.prepare("DELETE FROM device_links WHERE player_id = ?").bind(player.id),
+    env.DB.prepare("DELETE FROM reports WHERE reporter_id = ? OR target_id = ?").bind(player.id, player.id),
     env.DB.prepare("DELETE FROM players WHERE id = ?").bind(player.id),
   ]);
   return ok({ deleted: true });
+}
+
+// A leaderboard username is the only user-generated content in the app (no chat/messaging).
+// Reports are stored for manual moderation review; repeatedly reported players can be
+// username-reset or removed by an operator directly in D1. Rate-limited to prevent report spam.
+const REPORT_REASONS = new Set(["offensive_username", "impersonation", "other"]);
+
+async function hReport(req, env, player) {
+  if (!(await rateLimit(env, req, "report", 20, 3600))) return fail(429, "rate_limited");
+  const { targetId, reason } = await readJson(req);
+  const r = REPORT_REASONS.has(reason) ? reason : "other";
+  if (!targetId || typeof targetId !== "string") return fail(400, "invalid_target");
+  if (targetId === player.id) return fail(400, "cannot_report_self");
+  const target = await env.DB.prepare("SELECT id FROM players WHERE id = ?").bind(targetId).first();
+  if (!target) return fail(404, "not_found");
+  await env.DB.prepare(
+    "INSERT INTO reports(id, reporter_id, target_id, reason, created_at) VALUES(?,?,?,?,?)"
+  ).bind(randomId("rp_"), player.id, targetId, r, nowS()).run();
+  return ok({ reported: true });
 }
 
 async function hHealth(req, env) {
@@ -374,6 +394,7 @@ export default {
       if (path === "/v1/board/total" && method === "GET") return hBoardTotal(req, env, url, await authPlayer(req, env));
       if (path === "/v1/me" && method === "GET") return hMe(req, env, await requireAuth(req, env));
       if (path === "/v1/username" && method === "PUT") return hUsername(req, env, await requireAuth(req, env));
+      if (path === "/v1/report" && method === "POST") return hReport(req, env, await requireAuth(req, env));
       return fail(404, "not_found");
     } catch (e) {
       if (e instanceof HttpError) return fail(e.status, e.message);

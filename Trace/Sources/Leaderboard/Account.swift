@@ -71,6 +71,16 @@ final class Account: NSObject, ObservableObject {
         await bootstrap()
     }
 
+    /// Report a leaderboard username for moderation review. Fire-and-forget from the UI's
+    /// perspective, same as score submission — a failure here should never block play.
+    @discardableResult
+    func report(playerId: String, reason: String = "offensive_username") async -> Bool {
+        if token == nil { await bootstrap() }
+        guard let token else { return false }
+        do { try await backend.reportPlayer(token: token, targetId: playerId, reason: reason); return true }
+        catch { lastError = describe(error); return false }
+    }
+
     // MARK: Sign in with Apple
 
     func startSignIn() {

@@ -48,6 +48,16 @@ CREATE INDEX IF NOT EXISTS idx_scores_level_time ON scores(level_id, best_time_m
 CREATE INDEX IF NOT EXISTS idx_scores_level_bt   ON scores(level_id, fewest_backtracks ASC, best_time_ms ASC);
 CREATE INDEX IF NOT EXISTS idx_scores_player     ON scores(player_id);
 
+-- ===== abuse reports (leaderboard usernames only — no chat/messaging in the app) =====
+CREATE TABLE IF NOT EXISTS reports (
+  id           TEXT    PRIMARY KEY,
+  reporter_id  TEXT    NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  target_id    TEXT    NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  reason       TEXT    NOT NULL,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_reports_target ON reports(target_id, created_at DESC);
+
 -- ===== fixed-window rate limiter =====
 CREATE TABLE IF NOT EXISTS rate (
   k    TEXT PRIMARY KEY,

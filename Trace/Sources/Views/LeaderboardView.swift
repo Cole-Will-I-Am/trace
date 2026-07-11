@@ -25,6 +25,13 @@ struct LeaderboardView: View {
                     else if let board, !board.entries.isEmpty {
                         ForEach(Array(board.entries.enumerated()), id: \.element.id) { i, e in
                             row(rank: i + 1, name: e.name, value: format(e.value), extra: e.extra)
+                                .swipeActions(edge: .trailing) {
+                                    if e.id != account.player?.id {
+                                        Button(role: .destructive) {
+                                            Task { await account.report(playerId: e.id) }
+                                        } label: { Label("Report", systemImage: "flag") }
+                                    }
+                                }
                         }
                     } else {
                         Text("No scores yet — be the first.").foregroundStyle(Theme.onInkDim)
