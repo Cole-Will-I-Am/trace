@@ -63,6 +63,7 @@ jobs:
             -project Trace.xcodeproj \
             -scheme Trace \
             -destination "platform=iOS Simulator,name=$DEVICE" \
+            -only-testing:TraceTests \
             CODE_SIGNING_ALLOWED=NO
 
   build-ios:
