@@ -34,6 +34,11 @@ public final class TraceEngine {
     /// How many times a trap snapped the player back to a checkpoint.
     public private(set) var resetCount: Int = 0
 
+    /// Replay events for server-side score validation. Each event is `[x, y, kind]`:
+    /// kind 0 = forward step, 1 = one-cell backtrack, 2 = trap snap-back to a checkpoint.
+    /// The attempted trap cell is deliberately omitted because it is not part of the trail.
+    public private(set) var replay: [[Int]] = []
+
     public init(maze: Maze) {
         self.maze = maze
         self.trail = [maze.start]
@@ -51,6 +56,7 @@ public final class TraceEngine {
         status = .tracing
         backtrackCount = 0
         resetCount = 0
+        replay = []
     }
 
     /// Attempt to move from the current cell to an orthogonally adjacent `to`, at elapsed
@@ -76,21 +82,43 @@ public final class TraceEngine {
             trail.removeLast()
             backtrackCount += 1
             recomputeCheckpoint()
+            replay.append([to.x, to.y, 1])
             return .backtracked(to)
         }
 
         // reaching the goal always wins — even if a moving hazard happens to occupy it.
-        if to == maze.goal { trail.append(to); status = .won; return .reachedGoal }
+        if to == maze.goal {
+            trail.append(to); status = .won
+            replay.append([to.x, to.y, 0])
+            return .reachedGoal
+        }
 
         // 4. traps on the destination → snap back to the last checkpoint.
-        if maze.spikes.contains(to) { return snapBack(.spike) }
-        if movingHazardOccupies(to, at: t) { return snapBack(.moving) }
-        if let ph = phantom(at: to), !ph.isSolid(at: t) { return snapBack(.phantom) }
+        if maze.spikes.contains(to) {
+            let result = snapBack(.spike)
+            appendResetEvent(result)
+            return result
+        }
+        if movingHazardOccupies(to, at: t) {
+            let result = snapBack(.moving)
+            appendResetEvent(result)
+            return result
+        }
+        if let ph = phantom(at: to), !ph.isSolid(at: t) {
+            let result = snapBack(.phantom)
+            appendResetEvent(result)
+            return result
+        }
 
         // 5. advance.
         trail.append(to)
         if maze.checkpoints.contains(to) { lastCheckpoint = to }
+        replay.append([to.x, to.y, 0])
         return .advanced(to)
+    }
+
+    private func appendResetEvent(_ result: MoveResult) {
+        if case let .reset(to: c, cause: _) = result { replay.append([c.x, c.y, 2]) }
     }
 
     // MARK: - trap / edge resolution

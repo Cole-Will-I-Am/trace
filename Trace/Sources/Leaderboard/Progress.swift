@@ -13,7 +13,10 @@ struct LevelRecord: Codable, Equatable {
         completed = true
         if bestTimeMs == nil || timeMs < bestTimeMs! { bestTimeMs = timeMs }
         if fewestBacktracks == nil || backtracks < fewestBacktracks! { fewestBacktracks = backtracks }
-        stars = max(stars, Self.earnedStars(timeMs: bestTimeMs ?? timeMs, backtracks: fewestBacktracks ?? backtracks, parMs: parMs))
+        // Star conditions must come from the same run. Combining the best time from one
+        // attempt with the fewest backtracks from another could award an impossible 3-star
+        // result that was never actually achieved.
+        stars = max(stars, Self.earnedStars(timeMs: timeMs, backtracks: backtracks, parMs: parMs))
     }
 
     static func earnedStars(timeMs: Int, backtracks: Int, parMs: Int) -> Int {

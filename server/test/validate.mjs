@@ -1,6 +1,6 @@
 // Pure unit tests for the Worker's maze-replay anti-cheat (no D1 / no live worker).
 //   node test/validate.mjs   (requires src/levels.js)
-import { validateTrail, LEVELS_DATA, HARD_MIN_MS_PER_CELL, SOFT_MIN_MS_PER_CELL } from "../src/index.js";
+import { validateTrail, validateReplay, LEVELS_DATA, HARD_MIN_MS_PER_CELL, SOFT_MIN_MS_PER_CELL } from "../src/index.js";
 import assert from "node:assert";
 
 let pass = 0;
@@ -44,6 +44,15 @@ ok("a fabricated Manhattan L-path is rejected on level 21", () => {
   assert.ok(threw, "a straight L-path should not validate on a real maze");
 });
 ok("time floors ordered", () => assert.ok(HARD_MIN_MS_PER_CELL < SOFT_MIN_MS_PER_CELL));
+ok("replay derives a backtrack from movement events", () => {
+  const replay = [[0, 1, 0], [0, 0, 1], [0, 1, 0], [1, 1, 0]];
+  const result = validateReplay(replay, [[0, 0], [0, 1], [1, 1]], lvl);
+  assert.equal(result.backtracks, 1);
+});
+ok("replay rejects a forged forward event", () => {
+  assert.throws(() => validateReplay([[0, 1, 0], [0, 0, 0], [1, 1, 0]], [[0, 0], [0, 1], [1, 1]], lvl),
+    (e) => e.message === "replay_bad_backtrack");
+});
 
 console.log(`\n${pass} checks passed`);
 

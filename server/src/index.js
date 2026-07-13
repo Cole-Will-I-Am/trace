@@ -143,21 +143,88 @@ export function validateTrail(trail, lvl) {
   return steps;
 }
 
+// Replay the app's accepted movement events so the backtrack metric is derived from the
+// actual trail transitions instead of trusted from a client-supplied integer. Event kinds:
+// 0 = forward step, 1 = one-cell backtrack, 2 = trap snap-back to a cell already on the trail.
+export function validateReplay(replay, finalTrail, lvl) {
+  const { w, h, passages, spikes } = lvl;
+  if (!Array.isArray(replay) || replay.length < 1 || replay.length > w * h * 100) {
+    throw new HttpError(422, "bad_replay");
+  }
+  const spikeSet = new Set((spikes || []).map(([x, y]) => x + "," + y));
+  const trail = [[0, 0]];
+  let backtracks = 0;
+
+  const validCell = (c) => Array.isArray(c) && c.length >= 2 &&
+    Number.isInteger(c[0]) && Number.isInteger(c[1]) && c[0] >= 0 && c[0] < w && c[1] >= 0 && c[1] < h;
+  const openStep = (from, to) => {
+    const dx = to[0] - from[0], dy = to[1] - from[1];
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return false;
+    const bit = stepBit(dx, dy);
+    return (passages[from[0] * h + from[1]] & bit) !== 0;
+  };
+
+  for (const event of replay) {
+    if (!Array.isArray(event) || event.length !== 3 || !validCell(event) ||
+        !Number.isInteger(event[2]) || event[2] < 0 || event[2] > 2) {
+      throw new HttpError(422, "bad_replay_event");
+    }
+    const to = [event[0], event[1]], kind = event[2];
+    const from = trail[trail.length - 1];
+
+    if (kind === 0) {
+      if (spikeSet.has(to[0] + "," + to[1]) || !openStep(from, to)) {
+        throw new HttpError(422, "replay_invalid_forward");
+      }
+      // The engine emits a backtrack event when returning to the immediately previous cell.
+      if (trail.length >= 2 && to[0] === trail[trail.length - 2][0] && to[1] === trail[trail.length - 2][1]) {
+        throw new HttpError(422, "replay_bad_backtrack");
+      }
+      trail.push(to);
+    } else if (kind === 1) {
+      if (trail.length < 2 || to[0] !== trail[trail.length - 2][0] || to[1] !== trail[trail.length - 2][1]) {
+        throw new HttpError(422, "replay_bad_backtrack");
+      }
+      trail.pop();
+      backtracks += 1;
+    } else {
+      const idx = trail.findIndex(([x, y]) => x === to[0] && y === to[1]);
+      if (idx < 0 || spikeSet.has(to[0] + "," + to[1])) throw new HttpError(422, "replay_bad_reset");
+      const removed = trail.length - idx - 1;
+      trail.length = idx + 1;
+      backtracks += removed;
+    }
+  }
+
+  if (!Array.isArray(finalTrail) || JSON.stringify(trail) !== JSON.stringify(finalTrail)) {
+    throw new HttpError(422, "replay_trail_mismatch");
+  }
+  validateTrail(trail, lvl);
+  return { trail, backtracks };
+}
+
 async function hScore(req, env, player) {
   if (!(await rateLimit(env, req, "score", 120, 3600))) return fail(429, "rate_limited");
   const body = await readJson(req);
   const levelId = Number(body.levelId);
   const timeMs = Number(body.timeMs);
-  const backtracks = Number(body.backtracks);
+  const claimedBacktracks = Number(body.backtracks);
   const trail = body.trail;
+  const replay = body.replay;
 
   const lvl = LEVELS_DATA[levelId];
   if (!lvl) return fail(400, "bad_level");
   if (!Number.isFinite(timeMs) || timeMs <= 0 || timeMs > MAX_TIME_MS) return fail(422, "bad_time");
-  if (!Number.isInteger(backtracks) || backtracks < 0 || backtracks > 100000) return fail(422, "bad_backtracks");
+  if (!Number.isInteger(claimedBacktracks) || claimedBacktracks < 0 || claimedBacktracks > 100000) return fail(422, "bad_backtracks");
 
-  let steps;
-  try { steps = validateTrail(trail, lvl); }
+  let steps, backtracks;
+  try {
+    if (!Array.isArray(replay)) return fail(422, "replay_required");
+    const result = validateReplay(replay, trail, lvl);
+    steps = result.trail.length - 1;
+    backtracks = result.backtracks;
+    if (claimedBacktracks !== backtracks) return fail(422, "backtrack_mismatch");
+  }
   catch (e) { if (e instanceof HttpError) return fail(e.status, e.message); throw e; }
 
   // finger must have crossed at least (forward steps + each backtracked cell) boundaries.

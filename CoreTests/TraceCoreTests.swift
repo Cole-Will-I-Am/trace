@@ -113,6 +113,17 @@ final class TraceCoreTests: XCTestCase {
         XCTAssertEqual(e.move(to: Coord(0, 2), at: 0), .ignored)    // run is over
     }
 
+    func testReplayRecordsBacktracksAndGoal() {
+        let e = TraceEngine(maze: corridor())
+        _ = e.move(to: Coord(0, 1), at: 0)
+        _ = e.move(to: Coord(0, 2), at: 0)
+        _ = e.move(to: Coord(0, 1), at: 0)
+        _ = e.move(to: Coord(0, 2), at: 0)
+        _ = e.move(to: Coord(0, 3), at: 0)
+        XCTAssertEqual(e.replay, [[0, 1, 0], [0, 2, 0], [0, 1, 1], [0, 2, 0], [0, 3, 0]])
+        XCTAssertEqual(e.backtrackCount, 1)
+    }
+
     func testWallBlocksNonAdjacentAndClosedSides() {
         let e = TraceEngine(maze: corridor())
         // east is an orthogonal neighbour but there's no corridor (and it's off-grid) → wall

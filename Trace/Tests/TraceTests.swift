@@ -28,4 +28,13 @@ final class TraceTests: XCTestCase {
         // following the BFS corridor reaches the goal (gates aside, the path is legal)
         XCTAssertTrue(e.trail.last == m.goal || e.status == .won || e.current != m.start)
     }
+
+    func testStarsDoNotCombineDifferentRuns() {
+        var record = LevelRecord()
+        record.record(timeMs: 4_000, backtracks: 2, parMs: 5_000) // two stars, not three
+        record.record(timeMs: 6_000, backtracks: 0, parMs: 5_000) // slower clean run
+        XCTAssertEqual(record.stars, 2)
+        record.record(timeMs: 4_000, backtracks: 0, parMs: 5_000)
+        XCTAssertEqual(record.stars, 3)
+    }
 }

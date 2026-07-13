@@ -80,10 +80,18 @@ final class Backend {
                               bodyData: enc(B(appleIdentityToken: identityToken, nonce: nonce, deviceId: deviceId, deviceSecret: deviceSecret)))
     }
 
-    func submitScore(token: String, levelId: Int, timeMs: Int, backtracks: Int, trail: [[Int]]) async throws -> ScoreResponse {
-        struct B: Encodable { let levelId: Int; let timeMs: Int; let backtracks: Int; let trail: [[Int]] }
+    func submitScore(token: String, levelId: Int, timeMs: Int, backtracks: Int,
+                     trail: [[Int]], replay: [[Int]]) async throws -> ScoreResponse {
+        struct B: Encodable {
+            let levelId: Int
+            let timeMs: Int
+            let backtracks: Int
+            let trail: [[Int]]
+            let replay: [[Int]]
+        }
         return try await send("/v1/score", method: "POST", token: token,
-                              bodyData: enc(B(levelId: levelId, timeMs: timeMs, backtracks: backtracks, trail: trail)))
+                              bodyData: enc(B(levelId: levelId, timeMs: timeMs, backtracks: backtracks,
+                                             trail: trail, replay: replay)))
     }
 
     func board(level: Int, metric: String, token: String?) async throws -> BoardResponse {

@@ -23,7 +23,10 @@ final class Account: NSObject, ObservableObject {
 
     /// Mint or resume the anonymous account. Safe to call on launch; never throws to the UI.
     func bootstrap() async {
-        if ready { return }
+        // A transient launch failure must not permanently disable score submission for the
+        // rest of the session. Once a token exists, the account is already bootstrapped;
+        // without one, allow a later call to retry registration.
+        if ready, token != nil { return }
         do {
             let resp = try await backend.registerAnon(deviceId: Keychain.deviceId(),
                                                       deviceSecret: Keychain.get(secretKey))
@@ -34,10 +37,13 @@ final class Account: NSObject, ObservableObject {
         ready = true
     }
 
-    func submit(levelId: Int, timeMs: Int, backtracks: Int, trail: [[Int]]) async -> ScoreResponse? {
+    func submit(levelId: Int, timeMs: Int, backtracks: Int, trail: [[Int]], replay: [[Int]]) async -> ScoreResponse? {
         if token == nil { await bootstrap() }
         guard let token else { return nil }
-        do { return try await backend.submitScore(token: token, levelId: levelId, timeMs: timeMs, backtracks: backtracks, trail: trail) }
+        do {
+            return try await backend.submitScore(token: token, levelId: levelId, timeMs: timeMs,
+                                                 backtracks: backtracks, trail: trail, replay: replay)
+        }
         catch { lastError = describe(error); return nil }
     }
 
@@ -65,7 +71,8 @@ final class Account: NSObject, ObservableObject {
 
     func deleteAccount() async {
         guard let token else { return }
-        try? await backend.deleteAccount(token: token)
+        do { try await backend.deleteAccount(token: token) }
+        catch { lastError = describe(error); return }
         Keychain.delete(tokenKey); Keychain.delete(secretKey)
         player = nil; ready = false
         await bootstrap()

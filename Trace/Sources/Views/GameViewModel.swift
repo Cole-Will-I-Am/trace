@@ -95,7 +95,8 @@ final class GameViewModel: ObservableObject {
         let trail = scene.trailPairs
         Task { [weak self] in
             guard let self else { return }
-            if let resp = await self.account.submit(levelId: self.levelID, timeMs: ms, backtracks: bt, trail: trail) {
+            if let resp = await self.account.submit(levelId: self.levelID, timeMs: ms, backtracks: bt,
+                                                    trail: trail, replay: self.scene.replay) {
                 await MainActor.run {
                     if resp.playerCount > 1 {
                         let top = max(1, Int((100 - resp.percentile).rounded()))
