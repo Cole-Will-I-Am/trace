@@ -27,7 +27,9 @@ on:
         default: false
 
 concurrency:
-  group: ios-release
+  # v2 retires the original lock, which can remain occupied when a hosted macOS
+  # runner hangs during cancellation. New releases remain serialized.
+  group: ios-release-v2
   cancel-in-progress: false
 
 permissions:
