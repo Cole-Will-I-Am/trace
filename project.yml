@@ -47,10 +47,6 @@ targets:
         PRODUCT_NAME: Trace
         TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_MODULE_NAME: Trace
-        # TestFlight/App Store archives must use a distribution identity. The release workflow
-        # supplies an App Store Connect API key, which can provision this cloud-managed
-        # certificate/profile but cannot recover from a saturated development-certificate pool.
-        CODE_SIGN_IDENTITY: "Apple Distribution"
     scheme:
       testTargets:
         - TraceTests

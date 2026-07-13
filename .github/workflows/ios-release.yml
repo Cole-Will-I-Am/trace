@@ -114,6 +114,12 @@ jobs:
             > "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
           chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
 
+      - name: Free up signing certificates
+        continue-on-error: true
+        env:
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: node scripts/revoke_dev_certs.mjs
+
       - name: Archive
         run: |
           set -euo pipefail
