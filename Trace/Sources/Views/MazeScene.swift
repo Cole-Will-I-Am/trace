@@ -337,6 +337,9 @@ final class MazeScene: SKScene {
     /// The final start→goal trail as [x,y] pairs, for leaderboard submission.
     var trailPairs: [[Int]] { engine.trail.map { [$0.x, $0.y] } }
 
+    /// Accepted movement events as [x,y,kind] triples for server-side replay validation.
+    var replay: [[Int]] { engine.replay }
+
     /// Lifting the finger before the goal resets the trace to the start (blueprint §2/§8).
     private func liftReset() {
         guard running, engine.status == .tracing else { return }
